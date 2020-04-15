@@ -1,0 +1,398 @@
+---
+title: "Appendices for Permits for New Private Housing in Arizona, 1988-2019"
+author: "Hannah Yee"
+date: "11/13/2019"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include=FALSE}
+library(readr)
+library(astsa)
+library(lmtest)
+library(tidyverse)
+setwd("C:/Users/yeeha/OneDrive/Documents/Graduate school/Math 645 - Time Series/Individual Project")
+```
+## i. Data Sources
+
+The following data was considered for this project (sources are noted):
+
+* New private housing units authorized by building permits for Arizona, seasonally adjusted (U.S. Census Bureau), January 1988-September 2019
+* Arizona unemployment rate, seasonally adjusted (Bureau of Labor Statistics), January 1988-September 2019
+* Arizona labor force participation rate, seasonally adjusted (Bureau of Labor Statistics), January 1988-September 2019
+* Arizona GDP by quarter (U.S. Bureau of Economic Analysis), 2005 Q1 - 2019 Q2
+* Arizona housing price index, purchase-only (Federal Housing Finance Agency), 1991 Q1 - 2019 Q2
+
+## ii. Selecting Explanatory Variables
+
+The below shows time series, autocorrelation, and cross-correlation for the variables under consideration.
+
+### a. Monthly variables
+
+```{r, echo=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+# AZ housing permits (Jan 1988 - Sept 2019)
+permits <- read.csv("az housing permits.csv")
+names(permits) <- c("date", "adj permits")
+permits <- ts(permits$`adj permits`, frequency = 12, start = c(1988,1), end = c(2019,9))
+plot(permits, ylab="Number of permits (monthly)", xlab="Time (January 1988-September 2019)", main="New private housing units authorized by building permits for Arizona", sub="(figure 1.1)")  
+
+acf(permits, lag.max = 50, main="ACF of permits", xlab="Lag (months)", sub="(figure 1.2)")
+# shows autocorrelation, but not seasonality
+```
+
+
+```{r, echo=FALSE, results='hide', warning=FALSE, message = FALSE }
+# AZ unemployment (Jan 1988 - Sept 2019)
+unemp <- read_csv("az adj unemployment 1988-2019.csv")
+u2 <- pivot_longer(unemp, cols = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), names_to="month")
+u2 <- u2[1:381,] # removes 3 empty entries at end
+u2 <- ts(u2$value, frequency = 12, start = c(1988,1), end = c(2019,9))
+```
+
+```{r, echo=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+plot(u2, ylab="Unemployment (percent)", xlab="Time (January 1988-September 2019)", main="Unemployment rate for Arizona", sub="(figure 1.3)")
+acfu <- acf(u2, plot = FALSE) # why are lags in fractional increments?
+acfu$lag <- acfu$lag*12
+plot(acfu, main="ACF of unemployment", sub="(figure 1.4)", xlab="Lag (months)")
+```
+
+```{r, echo=FALSE, message=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+# AZ labor participation (Jan 1988- Sept 2019, in percent)
+lp <- read_csv("labor participation.csv")
+names(lp) <- c("date", "labor participation")
+lp <- ts(lp$`labor participation`, frequency = 12, start = c(1988,1))
+plot(lp, main="Labor participation in Arizona", ylab="Labor participation (percent)", xlab="Time (January 1988-September 2019)", sub="(figure 1.5)")
+lp_acf <- acf(lp, plot=FALSE)
+lp_acf$lag <- lp_acf$lag*12
+plot(lp_acf, xlab="Lag (months)", main="ACF of labor participation", sub="(figure 1.6)")
+```
+
+```{r, echo=FALSE}
+# plot variables against one another to visually inspect relationship with Permits. 
+pairs(cbind(Permits=permits, Unemployment=u2, "Labor participation"=lp), main="Scatterplots of monthly variables (figure 1.7)")
+```
+
+The scatterplots generally suggest that permits and unemployment have a negative relationship, and that permits and labor participation have a positive relationship.
+
+**Correlation of permits, unemployment, and Labor participation (figure 1.8)**:
+```{r, echo=FALSE}
+#create a correlation matrix
+mdf = data.frame(Permits=permits, Unemployment=u2, "Labor participation"=lp)
+cor(mdf, )
+
+```
+
+### b. Quarterly variables
+
+```{r, echo=FALSE, message=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+# Arizona GDP (Q1 2005 - Q2 2019) (in millions of current dollars)
+gdp <- read_csv("az gdp 2005-2019.csv")
+gdp <- gdp[, 10:67]
+az_gdp <- pivot_longer(gdp, cols = "2005:Q1":"2019:Q2", names_to="gdp")
+az_gdp <- ts(az_gdp$value, frequency = 4, start = c(2005,1), end = c(2019,2))
+plot(az_gdp, main="Arizona GDP", ylab="GDP", xlab="Time (2005 Q1 - 2019 Q2)", sub="(figure 1.9)")
+acf_gdp <- acf(az_gdp, plot=FALSE)
+acf_gdp$lag <- acf_gdp$lag*4
+plot(acf_gdp, sub="(figure 1.10)", xlab = "lag (quarters)", main="ACF for Arizona GDP")
+ 
+#Housing price index, purchase-only (1991-2019 (Q2))
+hpi <- read_csv("az hpi po.csv")
+hpi <- hpi[hpi$state == "AZ",c(1:3,5)]
+hpi <- ts(hpi$index_sa, frequency = 4, start = c(1991,1))
+
+plot(hpi, main="Arizona housing price indices, purchase-only", ylab="Housing price index", xlab="Time (1991 Q1 - 2019 Q2)", sub="(figure 1.11)")
+acf_hpi <- acf(hpi, plot = FALSE)
+acf_hpi$lag <- acf_hpi$lag*4
+plot(acf_hpi, sub="(figure 1.12)", xlab="lags (quarters)", main="ACF for housing price index")
+
+```
+
+```{r, echo=FALSE}
+# permit data on quarterly basis
+q_permits <- ts(permits, start=c(1988,1), frequency=12)
+q_permits <- aggregate(q_permits, nfrequency=4)/3
+
+#plot(q_permits, main="AZ housing permits (quarterly)" ylab="Number of housing permits", xlab="Time (1991 Q1 - 2019 Q2)", sub="(figure 1.11)"))
+# class(q_permits)
+```
+
+Plot all quarterly variables against one another:
+
+```{r, echo=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+plot(az_gdp, q_permits[69:126], main="Housing permits vs. Arizona GDP", ylab="Average quarterly housing permits", xlab="Arizona GDP (quarterly)", sub="(figure 1.13)")
+
+plot(hpi, q_permits[13:126], main="Housing permits vs. housing price index", ylab="Average quarterly housing permits", xlab="Housing price index (purchase only)", sub="(figure 1.14)")
+```
+
+Correlation between GDP and permits and the housing price index and GDP, respectively, are
+```{r, echo=FALSE}
+# corr of AZ GDP and avg quarterly permits
+cor(az_gdp, q_permits[69:126])
+
+#corr of Housing price index (purchase only) and avg qurterly permits
+cor(hpi, q_permits[13:126])
+```
+
+\pagebreak
+### c. Decompositions, scatterplots, and crosscorrelation plots
+
+**Multiplicative decomposition of permits (figure 1.15):***
+```{r, echo=FALSE, fig.height=4.5, fig.width=6, fig.align = "center"}
+plot(decompose(permits, type = c("multiplicative")), sub="(figure 1.15)")
+```
+
+\pagebreak
+
+```{r, echo=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+plot(ccf(u2,permits, plot=FALSE), sub="(figure 1.16)", main = "Cross correlation of unemployment with permits")
+plot(ccf(lp,permits, plot=FALSE), sub="(figure 1.17)", main = "Cross correlation of labor participation withd permits")
+```
+
+\pagebreak
+**Additive decomposition of labor participation (figure 1.18):**
+```{r, echo=FALSE, fig.height=4.5, fig.width=6, fig.align = "center"}
+plot(decompose(lp))
+```
+\pagebreak
+**Additive decomposition of unemployment (figure 1.19):**
+```{r, echo=FALSE, fig.height=4.5, fig.width=6, fig.align = "center"}
+#decomposition of unemployment
+plot(decompose(u2))
+```
+
+```{r, echo=FALSE, fig.height=4.25, fig.width=6, fig.align = "center"}
+# Permits vs. unemployment
+plot(u2,permits, main="Permits vs. unemployment", sub="(figure 1.20)", ylab="Permits", xlab="Unemployment (percent)")
+
+ccf_u2 <- ccf(u2,permits, plot=FALSE, lag.max = 50)
+ccf_u2$lag <- ccf_u2$lag*12
+plot(ccf_u2, sub="(figure 1.21)", main="Crosscorrelation of permits and unemployment", )
+
+# permits vs. labor participation
+
+plot(lp,permits,main="permits vs. labor participation", sub="(figure 1.22)", xlab="Labor participation")
+
+ccf_lp <- ccf(lp,permits, plot = FALSE, lag.max = 70)
+ccf_lp$lag <- ccf_lp$lag*12
+plot(ccf_lp, main="Crosscorrelation of permits and labor participation", sub="(figure 1.23)")
+```
+
+## iii. Smoothing
+
+The following smoothers were examined to shed light on general trends in the permit data, and the relationship between permit and unemployment or labor participation.
+
+```{r, echo=FALSE, fig.height=3.5, fig.width=6, fig.align = "center"}
+# Smoothing Splines
+plot(permits, type="p", ylab="permits", main="Smoothing splines (permits)", sub="(figure 2.1)")
+lines(smooth.spline(time(permits), permits))
+lines(smooth.spline(time(permits), permits, spar=1))
+
+# Modeling response as a smooth function of unemployment for permit data
+#Lowess fit
+plot(u2, permits, main="Lowess smoother (permits and unemployment)", xlab="unemployment", ylab="permits", sub="(figure 2.2)")
+lines(lowess(u2,permits))
+
+#smoothing spline fit
+plot(u2, permits, main="Smoothing splines (permits and unemployment)", xlab="unemployment", ylab="permits", sub="(figure 2.3)")
+lines(smooth.spline(u2, permits))
+
+# Modeling response as a smooth function of labor participation for permit data
+plot(lp, permits, main="Lowess smoother (permits and labor participation)", xlab="labor participation", ylab="permits", sub="(figure 2.4)")
+lines(lowess(lp,permits))
+
+#smoothing spline fit
+plot(lp, permits, main="Smoothing splines (permits and labor participation)", xlab="labor participation", ylab="permits", sub="(figure 2.5)")
+lines(smooth.spline(lp, permits))
+```
+
+## iv. Transformations
+
+The following transformations were tested to examine potential for downplaying the effects of nonstationarity and trends in the data:
+
+```{r, echo=FALSE, fig.height=3.5, fig.width=6, fig.align = "center"}
+# first difference
+plot(diff(permits), main ="First difference transformation", sub="(figure 3.1)")
+acf(diff(permits), main="ACF of first difference", sub="(figure 3.2)")
+
+# log transformation
+
+plot(log(permits), main="Logarithmic transformation", sub="(figure 3.3)")
+acf(log(permits), main="ACF of logarithmic transformation", sub="(figure 3.4)")
+
+# first diff of log
+plot(diff(log(permits)), main="First difference of log transformation", sub="(figure 3.5)")
+acf(diff(log(permits)),  main="ACF of first difference of log transformation", sub="(figure 3.6)")
+
+# Second differencing. Easier to interpret than first diff? And very similar in result
+
+plot(diff(diff(permits)), main="Second difference transformation", sub="(figure 3.7)")
+acf(diff(diff(permits)), main="ACF of second difference transformation", sub="(figure 3.8)")
+
+
+```
+
+## v. Regression models: Achieving stationarity
+
+
+### a. Stationarity for unemployment
+
+Below is a straightforward linear model of permits given unemployment. The residuals still show a significant amount of pattern remaining in the data, and a statistically significant Durbin-Watson value of 0.22434 indicates that we fail to reject the null. As such, it is reasonable to conclude that there is negative autocorrelation left in the data and we cannot reasonably apply a linear model.
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+lm1 <- lm(permits ~ u2)
+summary(lm1)
+plot(rstudent(lm1), type ="o", sub="(figire 5.1)", main="Residuals for linear model of 
+     permits vs. employment")
+acf(rstudent(lm1), sub="(figure 5.2)", main="ACF for linear model")
+
+dwtest(lm1)
+```
+
+Below we test the correlation remaining in a linear model with first differenced permit and unemployment data. The residuals switch from positive to negative in an apparently random pattern and autocorrelation of the residuals appear much reduced. A statistically significant Durbin-Watson value of 2.8949 suggests that we may either fail to reject the null or say that there is simply not sufficient evidence to reject the null. As such, it is reasonable to conclude that there is no autocorrelation left in the data and we may proceed with modeling the differenced data.
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+lm2 <- lm(diff(permits) ~ diff(u2))
+summary(lm2)
+plot(rstudent(lm2), type ="o", main="Residuals of linear model with first difference") 
+acf(rstudent(lm2), main="ACF for standardized residuals")
+
+dwtest(lm2, alternative = c("less"))
+```
+
+### b. Stationarity for labor participation
+
+A linear model with untransformed data shows notable trend and autocorrelation remaining in the residuals. A low Durbin-Watson statistic of 0.1896, indicates that we ought to reject the null and accept that there is still positive autocorrelation in the data
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+lm4 <- lm(permits ~ lp)
+summary(lm4)
+plot(rstudent(lm4), type ="o", main="Residuals of linear model for permits and labor participation")
+acf(rstudent(lm4), main = "ACF for standardized residuals")
+
+dwtest(lm4)
+```
+
+A linear model with differenced variables suggests that trends and autocorrelation in the residuals are much reduced. A high p-value for the Durbin-Watson test suggests that it's reasonable to infer that it is permissible to proceed as if there is no positive autocorrelation in the data.
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+lm5 <- lm(diff(permits) ~ diff(lp))
+summary(lm5)
+plot(rstudent(lm5), type ="o", main="Residuals with differenced permits and labor participation")
+acf(rstudent(lm5), main = "ACF for standardized residuals")
+
+dwtest(lm5)
+```
+
+
+## vi. Regression models: Modeling the data
+
+The Hildreth-Lu method was employed to model the permit data against the unemployment and labor participation data.
+
+### a. Hildreth-lu with unemployment
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+rho = seq(-0.99,0.99,by=0.01)
+hildreth.lu <- function(rho, lm2){
+  x <- model.matrix(lm2)[, -1]
+  y <- model.response(model.frame(lm2)) 
+  n <- length(y)
+  t <- 2:n
+  y <- y[t] - rho * y[t-1]
+  x <- x[t] - rho * x[t-1]
+return(lm(y ~ x))
+}
+tab <- data.frame("rho" = rho, "SSE" = sapply(rho, function(r) {deviance(hildreth.lu(r, lm2))}))
+head(round(tab, 6),10)
+
+rhat.min=rho[which.min(tab$SSE)];rhat.min
+
+plot(SSE ~ rho, tab, type = 'l', main="SSEs for values of rho")
+abline(v = tab[tab$SSE == min(tab$SSE), 'rho'], lty = 3)
+axis(1,at=rhat.min,col=2,cex.axis=0.7,tck=-0.05,las=2)
+
+yprime.hl<-rep(0,381-1)
+xprime.hl<-rep(0,381-1)
+
+for (i in 1:380){
+  yprime.hl[i]<-diff(permits)[i+1]-rhat.min*diff(permits)[i]
+  xprime.hl[i]<-diff(u2)[i+1]-rhat.min*diff(u2)[i]}
+fit.hl<-lm(yprime.hl~xprime.hl)
+summary(fit.hl)
+
+# Durbin-watson test
+dwtest(fit.hl, alternative = c("less"))
+```
+
+```{r}
+# regression diagnostics 
+par(mfrow = c(2, 2))
+plot(fit.hl)
+
+# transform back
+b0.hl<-fit.hl$coefficients[1]/(1-rhat.min)
+b1.hl<-fit.hl$coefficients[2]
+
+# intercept
+b0.hl
+
+# slope 
+b1.hl
+
+```
+
+
+### b. Hildreth-Lu with labor participation
+
+```{r, fig.height=3.5, fig.width=6, fig.align = "center"}
+rho2 = seq(-0.99,0.99,by=0.01)
+hildreth.lu2 <- function(rho2, lm5){
+  x2 <- model.matrix(lm5)[, -1]
+  y2 <- model.response(model.frame(lm5)) 
+  n2 <- length(y2)
+  t2 <- 2:n2
+  y2 <- y2[t2] - rho2 * y2[t2-1]
+  x2 <- x2[t2] - rho2 * x2[t2-1]
+  return(lm(y2 ~ x2))
+}
+
+tab <- data.frame("rho" = rho2, "SSE" = sapply(rho2, function(r) {deviance(hildreth.lu2(r, lm5))} ))
+head(round(tab, 6),10)
+
+rhat.min2=rho2[which.min(tab$SSE)];rhat.min2
+
+plot(SSE ~ rho2, tab, type = 'l', main="SSEs for values of rho")
+abline(v = tab[tab$SSE == min(tab$SSE), 'rho'], lty = 3)
+axis(1,at=rhat.min2,col=2,cex.axis=0.7,tck=-0.05,las=2)
+
+yprime.hl2<-rep(0,380-1)
+xprime.hl2<-rep(0,380-1)
+for (i in 1:379){
+  yprime.hl2[i]<-diff(permits)[i+1]-rhat.min2*diff(permits)[i]
+  xprime.hl2[i]<-diff(lp)[i+1]-rhat.min2*diff(lp)[i]}
+fit.hl2 <- lm(yprime.hl2~xprime.hl2)
+summary(fit.hl2)
+
+# Durbin-Watson test
+dwtest(fit.hl2)
+```
+
+```{r}
+# Regression diagnostics 
+par(mfrow = c(2, 2))
+plot(fit.hl2)
+
+#transform back
+b0.hl2<-fit.hl2$coefficients[1]/(1-rhat.min2)
+b1.hl2<-fit.hl2$coefficients[2]
+
+#intercept = 2.354486
+b0.hl2
+
+# slope = -115.2674 
+b1.hl2
+
+```
